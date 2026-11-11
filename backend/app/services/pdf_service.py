@@ -1,7 +1,10 @@
 import os
 import hashlib
 from typing import Dict, List, Any, Tuple
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz  # PyMuPDF
 
 
 class PDFService:

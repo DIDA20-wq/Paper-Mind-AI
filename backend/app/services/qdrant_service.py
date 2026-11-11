@@ -23,14 +23,14 @@ class QdrantService:
 
             # Try connecting to remote Qdrant if running
             try:
-                client = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT, timeout=2.0)
+                client = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT, timeout=2.0, check_compatibility=False)
                 client.get_collections()
                 self.client = client
                 logger.info(f"Connected to remote Qdrant server at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
             except Exception:
                 # Fallback to local on-disk embedded Qdrant
                 logger.info(f"Remote Qdrant not detected. Using embedded Qdrant at: {settings.QDRANT_PATH}")
-                self.client = QdrantClient(path=settings.QDRANT_PATH)
+                self.client = QdrantClient(path=settings.QDRANT_PATH, check_compatibility=False)
 
             self._ensure_collection()
         except Exception as e:
