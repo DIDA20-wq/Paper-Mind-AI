@@ -38,6 +38,10 @@ class ChatSessionCreate(ChatSessionBase):
     pass
 
 
+class ChatSessionUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
 class ChatSessionRead(ChatSessionBase):
     id: str
     user_id: str

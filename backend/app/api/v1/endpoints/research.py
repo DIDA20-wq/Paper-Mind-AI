@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -35,6 +36,7 @@ def summarize_paper(
     """
     Generate or retrieve structured 7-section academic summary:
     Abstract, Objectives, Methodology, Dataset, Results, Limitations, Conclusion.
+    Supports force_regenerate to refresh cached summaries.
     """
     doc = db.query(Document).filter(
         Document.id == req.document_id,
@@ -43,48 +45,67 @@ def summarize_paper(
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Check cached summary in PostgreSQL
+    # Check cached summary in PostgreSQL unless force_regenerate is requested
     cached_summary = db.query(Summary).filter(Summary.document_id == doc.id).first()
-    if cached_summary:
+    if cached_summary and not req.force_regenerate:
         return {"document_id": doc.id, "summary": cached_summary}
 
     # Query key passages from Qdrant for each category
-    def query_passages(query: str, limit: int = 2) -> str:
+    def query_passages(query: str, limit: int = 3) -> str:
         q_vec = embedding_engine.embed_query(query)
         hits = qdrant_service.search(
             query_vector=q_vec,
             user_id=current_user.id,
             document_ids=[doc.id],
             limit=limit,
-            score_threshold=0.1
+            score_threshold=0.05
         )
         if not hits:
             return f"Evidence regarding {query.lower()} was not explicitly identified in the retrieved sections."
-        return " ".join([h["snippet"][:250].strip() for h in hits])
+        
+        # Clean snippet lines
+        extracted = []
+        for h in hits:
+            clean_s = " ".join(h["snippet"].split())
+            if len(clean_s) > 30 and clean_s not in extracted:
+                extracted.append(clean_s)
+        return " ".join(extracted[:2])[:400]
 
-    abstract_text = query_passages("Abstract and introduction overview", 2)
-    objectives_text = query_passages("Research objectives, goals, and problem formulation", 2)
-    methodology_text = query_passages("Methodology, proposed model architecture, and algorithms", 2)
-    dataset_text = query_passages("Datasets, benchmarks, corpora, and training baselines", 2)
-    results_text = query_passages("Empirical results, evaluation metrics, and benchmark performance", 2)
-    limitations_text = query_passages("Limitations, constraints, failure modes, and observed research gaps", 2)
-    conclusion_text = query_passages("Conclusion, takeaways, and future work", 2)
+    abstract_text = query_passages("Abstract and introduction overview", 3)
+    objectives_text = query_passages("Research objectives, goals, and problem formulation", 3)
+    methodology_text = query_passages("Methodology, proposed model architecture, and algorithms", 3)
+    dataset_text = query_passages("Datasets, benchmarks, corpora, and training baselines", 3)
+    results_text = query_passages("Empirical results, evaluation metrics, and benchmark performance", 3)
+    limitations_text = query_passages("Limitations, constraints, failure modes, and observed research gaps", 3)
+    conclusion_text = query_passages("Conclusion, takeaways, and future work", 3)
 
-    new_summary = Summary(
-        document_id=doc.id,
-        abstract=abstract_text,
-        objectives=objectives_text,
-        methodology=methodology_text,
-        dataset=dataset_text,
-        results=results_text,
-        limitations=limitations_text,
-        conclusion=conclusion_text,
-    )
-    db.add(new_summary)
-    db.commit()
-    db.refresh(new_summary)
-
-    return {"document_id": doc.id, "summary": new_summary}
+    if cached_summary:
+        # Update existing record
+        cached_summary.abstract = abstract_text
+        cached_summary.objectives = objectives_text
+        cached_summary.methodology = methodology_text
+        cached_summary.dataset = dataset_text
+        cached_summary.results = results_text
+        cached_summary.limitations = limitations_text
+        cached_summary.conclusion = conclusion_text
+        db.commit()
+        db.refresh(cached_summary)
+        return {"document_id": doc.id, "summary": cached_summary}
+    else:
+        new_summary = Summary(
+            document_id=doc.id,
+            abstract=abstract_text,
+            objectives=objectives_text,
+            methodology=methodology_text,
+            dataset=dataset_text,
+            results=results_text,
+            limitations=limitations_text,
+            conclusion=conclusion_text,
+        )
+        db.add(new_summary)
+        db.commit()
+        db.refresh(new_summary)
+        return {"document_id": doc.id, "summary": new_summary}
 
 
 @router.get("/summary/{document_id}", response_model=SummaryRead)
@@ -93,6 +114,67 @@ def get_paper_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Retrieve existing cached summary for a document."""
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    
+    summary = db.query(Summary).filter(Summary.document_id == document_id).first()
+    if not summary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Summary not yet generated for this document")
+    
+    return summary
+
+
+@router.get("/summary/{document_id}/export")
+def export_paper_summary(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export the 7-section structured academic summary as a formatted research markdown document."""
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    
+    summary = db.query(Summary).filter(Summary.document_id == document_id).first()
+    if not summary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Summary not yet generated for this document")
+
+    md_lines = [
+        f"# Structured Academic Summary: {doc.title}",
+        f"**File:** {doc.filename} | **Pages:** {doc.page_count} | **Indexed Chunks:** {doc.chunk_count}",
+        f"**Generated:** {summary.generated_at.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+        "\n---\n",
+        "## 1. Abstract & High-Level Scope",
+        f"{summary.abstract or 'Not reported.'}\n",
+        "## 2. Research Objectives & Hypotheses",
+        f"{summary.objectives or 'Not reported.'}\n",
+        "## 3. Methodology & Technical Architecture",
+        f"{summary.methodology or 'Not reported.'}\n",
+        "## 4. Datasets, Corpora & Benchmarks",
+        f"{summary.dataset or 'Not reported.'}\n",
+        "## 5. Empirical Results & Performance Metrics",
+        f"{summary.results or 'Not reported.'}\n",
+        "## 6. Limitations & Evidence-Based Gaps",
+        f"{summary.limitations or 'Not reported.'}\n",
+        "## 7. Conclusions & Future Research Avenues",
+        f"{summary.conclusion or 'Not reported.'}\n",
+    ]
+    full_markdown = "\n".join(md_lines)
+    safe_title = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in doc.title)[:40]
+    return {
+        "document_id": doc.id,
+        "title": doc.title,
+        "filename": f"PaperMind_Summary_{safe_title}.md",
+        "markdown": full_markdown
+    }
     """Retrieve existing cached summary for a document."""
     doc = db.query(Document).filter(
         Document.id == document_id,
@@ -180,6 +262,55 @@ def compare_papers(
         synthesis_observations=synthesis_obs,
         papers=paper_items
     )
+
+
+@router.post("/compare/export")
+def export_comparison_matrix(
+    req: CompareRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export multi-paper comparative matrix as a structured Markdown table."""
+    comp_res = compare_papers(req, db, current_user)
+    md_lines = [
+        "# PaperMind AI — Multi-Paper Comparative Matrix",
+        f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+        f"**Papers Compared ({len(comp_res.papers)}):** " + ", ".join([f"`{p.title}`" for p in comp_res.papers]),
+        "\n---\n",
+        "## Executive Summary",
+        f"{comp_res.comparison_summary}\n",
+        "## Key Architectural & Methodological Differences",
+    ]
+    for d in comp_res.key_differences:
+        md_lines.append(f"- {d}")
+    md_lines.append("\n## Cross-Study Synthesis Observations")
+    for obs in comp_res.synthesis_observations:
+        md_lines.append(f"- {obs}")
+    
+    md_lines.append("\n## Structured Comparison Matrix\n")
+    # Build Markdown table
+    header = "| Dimension | " + " | ".join([p.title for p in comp_res.papers]) + " |"
+    separator = "| --- | " + " | ".join(["---" for _ in comp_res.papers]) + " |"
+    md_lines.append(header)
+    md_lines.append(separator)
+
+    dims = [
+        ("Objectives", lambda p: p.objectives),
+        ("Methodology", lambda p: p.methodology),
+        ("Dataset", lambda p: p.dataset),
+        ("Results", lambda p: p.results),
+        ("Limitations", lambda p: p.limitations),
+    ]
+    for label, fn in dims:
+        clean_vals = [fn(p).replace("\n", " ").replace("|", "\\|") for p in comp_res.papers]
+        row = f"| **{label}** | " + " | ".join(clean_vals) + " |"
+        md_lines.append(row)
+
+    full_markdown = "\n".join(md_lines)
+    return {
+        "filename": "PaperMind_Comparison_Matrix.md",
+        "markdown": full_markdown
+    }
 
 
 @router.post("/search", response_model=List[PassageResult])

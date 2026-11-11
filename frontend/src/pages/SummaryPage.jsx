@@ -13,6 +13,7 @@ import {
   Check,
   ChevronRight,
   BookOpen,
+  RotateCw,
 } from 'lucide-react';
 import Badge from '../components/common/Badge';
 import Button from '../components/common/Button';
@@ -41,7 +42,7 @@ export const SummaryPage = () => {
     fetchDocs();
   }, []);
 
-  const handleGenerateSummary = async () => {
+  const handleGenerateSummary = async (regenerate = false) => {
     if (!selectedDocId) return;
     setLoading(true);
     setSummary(null);
@@ -49,6 +50,7 @@ export const SummaryPage = () => {
     try {
       const res = await api.post('/research/summarize', {
         document_id: selectedDocId,
+        force_regenerate: regenerate,
       });
       setSummary(res.data.summary);
     } catch (err) {
@@ -56,6 +58,25 @@ export const SummaryPage = () => {
       alert(err.response?.data?.detail || "Could not generate summary.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportSummary = async () => {
+    if (!selectedDocId) return;
+    try {
+      const res = await api.get(`/research/summary/${selectedDocId}/export`);
+      const blob = new Blob([res.data.markdown], { type: 'text/markdown;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', res.data.filename || 'research_summary.md');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export summary failed:", err);
+      alert("Could not export summary report.");
     }
   };
 
@@ -94,6 +115,14 @@ export const SummaryPage = () => {
 
         {summary && (
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={Download}
+              onClick={handleExportSummary}
+            >
+              Export (.md)
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -137,15 +166,28 @@ export const SummaryPage = () => {
           </div>
         </div>
 
-        <Button
-          variant="primary"
-          icon={Sparkles}
-          disabled={!selectedDocId || loading}
-          loading={loading}
-          onClick={handleGenerateSummary}
-        >
-          {loading ? 'Synthesizing...' : 'Generate 7-Section Summary'}
-        </Button>
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          {summary && (
+            <Button
+              variant="outline"
+              icon={RotateCw}
+              disabled={!selectedDocId || loading}
+              loading={loading}
+              onClick={() => handleGenerateSummary(true)}
+            >
+              Regenerate
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            icon={Sparkles}
+            disabled={!selectedDocId || loading}
+            loading={loading}
+            onClick={() => handleGenerateSummary(false)}
+          >
+            {loading ? 'Synthesizing...' : 'Generate 7-Section Summary'}
+          </Button>
+        </div>
       </div>
 
       {/* Summary Content Blocks */}

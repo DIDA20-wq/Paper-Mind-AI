@@ -15,6 +15,8 @@ import {
   Square,
   AlertCircle,
   FileCheck2,
+  Trash2,
+  Download,
 } from 'lucide-react';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
@@ -96,6 +98,40 @@ export const ChatPage = () => {
   const handleStartNewSession = () => {
     setActiveSessionId(null);
     setMessages([]);
+  };
+
+  const handleDeleteSession = async (sessionId) => {
+    if (!window.confirm("Are you sure you want to delete this research conversation?")) return;
+    try {
+      await api.delete(`/chat/sessions/${sessionId}`);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(null);
+        setMessages([]);
+      }
+    } catch (err) {
+      console.error("Delete session failed:", err);
+      alert("Failed to delete chat session.");
+    }
+  };
+
+  const handleExportSession = async () => {
+    if (!activeSessionId) return;
+    try {
+      const res = await api.get(`/chat/sessions/${activeSessionId}/export`);
+      const blob = new Blob([res.data.markdown], { type: 'text/markdown;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', res.data.filename || 'research_conversation.md');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export session failed:", err);
+      alert("Could not export session transcript.");
+    }
   };
 
   const handleAsk = async (promptText) => {
@@ -229,20 +265,38 @@ export const ChatPage = () => {
               <p className="text-xs text-slate-400 py-6 text-center">No conversation history</p>
             ) : (
               sessions.map((s) => (
-                <button
+                <div
                   key={s.id}
-                  onClick={() => loadSession(s.id)}
-                  className={`w-full text-left p-2.5 rounded-lg text-xs transition-colors truncate block ${
+                  className={`group flex items-center justify-between p-2 rounded-lg text-xs transition-colors ${
                     activeSessionId === s.id
                       ? 'bg-brand-600 text-white font-medium shadow-sm'
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <p className="truncate">{s.title}</p>
-                  <span className={`text-[10px] block mt-0.5 ${activeSessionId === s.id ? 'text-brand-200' : 'text-slate-400'}`}>
-                    {new Date(s.updated_at).toLocaleDateString()}
-                  </span>
-                </button>
+                  <button
+                    onClick={() => loadSession(s.id)}
+                    className="flex-1 text-left truncate mr-2"
+                  >
+                    <p className="truncate font-medium">{s.title}</p>
+                    <span className={`text-[10px] block mt-0.5 ${activeSessionId === s.id ? 'text-brand-200' : 'text-slate-400'}`}>
+                      {new Date(s.updated_at).toLocaleDateString()}
+                    </span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteSession(s.id);
+                    }}
+                    className={`p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
+                      activeSessionId === s.id
+                        ? 'hover:bg-brand-700 text-brand-200 hover:text-white'
+                        : 'hover:bg-slate-200 text-slate-400 hover:text-rose-600'
+                    }`}
+                    title="Delete conversation"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -268,6 +322,16 @@ export const ChatPage = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {activeSessionId && messages.length > 0 && (
+              <button
+                onClick={handleExportSession}
+                className="px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors"
+                title="Export conversation and citations as Markdown"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-500" />
+                <span>Export Chat (.md)</span>
+              </button>
+            )}
             <Badge variant="success">Zero Hallucination Grounding</Badge>
           </div>
         </div>

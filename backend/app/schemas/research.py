@@ -20,6 +20,7 @@ class SummaryRead(BaseModel):
 
 class SummarizeRequest(BaseModel):
     document_id: str
+    force_regenerate: bool = False
 
 
 class SummaryResponse(BaseModel):

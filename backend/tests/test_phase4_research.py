@@ -1,4 +1,8 @@
 import uuid
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 from fastapi.testclient import TestClient
 
 
@@ -12,8 +16,6 @@ def test_research_summarize_and_compare(client: TestClient):
     headers = {"Authorization": f"Bearer {token}"}
 
     # 2. Upload two synthetic research papers
-    import fitz
-    
     # Doc A
     doc_a = fitz.open()
     p1 = doc_a.new_page()
@@ -61,6 +63,23 @@ def test_research_summarize_and_compare(client: TestClient):
         assert "methodology" in summary_data
         assert "results" in summary_data
 
+        # 3b. Test force_regenerate summary
+        regen_res = client.post(
+            "/api/v1/research/summarize",
+            json={"document_id": doc_id_a, "force_regenerate": True},
+            headers=headers
+        )
+        assert regen_res.status_code == 200
+
+        # 3c. Test Summary Markdown Export
+        export_summ = client.get(
+            f"/api/v1/research/summary/{doc_id_a}/export",
+            headers=headers
+        )
+        assert export_summ.status_code == 200
+        assert "markdown" in export_summ.json()
+        assert "Structured Academic Summary" in export_summ.json()["markdown"]
+
         # 4. Test Multi-Paper Compare endpoint
         comp_res = client.post(
             "/api/v1/research/compare",
@@ -72,6 +91,16 @@ def test_research_summarize_and_compare(client: TestClient):
         assert len(comp_data["papers"]) == 2
         assert len(comp_data["key_differences"]) > 0
         assert len(comp_data["synthesis_observations"]) > 0
+
+        # 4b. Test Multi-Paper Compare Export endpoint
+        comp_exp = client.post(
+            "/api/v1/research/compare/export",
+            json={"document_ids": [doc_id_a, doc_id_b]},
+            headers=headers
+        )
+        assert comp_exp.status_code == 200
+        assert "markdown" in comp_exp.json()
+        assert "| Dimension |" in comp_exp.json()["markdown"]
 
         # 5. Test Chat Ask endpoint against these papers
         chat_res = client.post(
@@ -85,8 +114,44 @@ def test_research_summarize_and_compare(client: TestClient):
         assert chat_res.status_code == 200
         chat_data = chat_res.json()
         assert "session_id" in chat_data
+        session_id = chat_data["session_id"]
         assert len(chat_data["citations"]) > 0
         assert chat_data["citations"][0]["document_id"] == doc_id_a
+
+        # 6. Test Chat Session Rename (PATCH)
+        patch_res = client.patch(
+            f"/api/v1/chat/sessions/{session_id}",
+            json={"title": "Updated ResNet Analysis Session"},
+            headers=headers
+        )
+        assert patch_res.status_code == 200
+        assert patch_res.json()["title"] == "Updated ResNet Analysis Session"
+
+        # 7. Test Chat Session Export
+        chat_exp = client.get(
+            f"/api/v1/chat/sessions/{session_id}/export",
+            headers=headers
+        )
+        assert chat_exp.status_code == 200
+        assert "markdown" in chat_exp.json()
+        assert "Research Session: Updated ResNet Analysis Session" in chat_exp.json()["markdown"]
+        assert "Verifiable Citations" in chat_exp.json()["markdown"]
+
+        # 8. Test Chat Session Deletion
+        del_res = client.delete(
+            f"/api/v1/chat/sessions/{session_id}",
+            headers=headers
+        )
+        assert del_res.status_code == 200
+        assert del_res.json()["success"] is True
+
+        # Verify session is deleted (404)
+        get_del = client.get(
+            f"/api/v1/chat/sessions/{session_id}",
+            headers=headers
+        )
+        assert get_del.status_code == 404
+
     finally:
         # Cleanup documents
         client.delete(f"/api/v1/documents/{doc_id_a}", headers=headers)

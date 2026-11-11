@@ -10,6 +10,7 @@ import {
   HelpCircle,
   ArrowRight,
   Layers,
+  Download,
 } from 'lucide-react';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
@@ -75,6 +76,35 @@ export const ComparePage = () => {
     }
   };
 
+  const handleExportComparison = async () => {
+    if (selectedIds.length < 2) return;
+    try {
+      const res = await api.post('/research/compare/export', {
+        document_ids: selectedIds,
+      });
+      const blob = new Blob([res.data.markdown], { type: 'text/markdown;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', res.data.filename || 'research_comparison_matrix.md');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to export comparative matrix.');
+    }
+  };
+
+  const selectAll = () => {
+    setSelectedIds(documents.slice(0, 5).map((d) => d.id));
+  };
+
+  const clearAll = () => {
+    setSelectedIds([]);
+  };
+
   const comparisonFields = [
     { key: 'objectives', label: 'Research Objectives & Problem Scope' },
     { key: 'methodology', label: 'Methodology & Technical Architecture' },
@@ -86,11 +116,24 @@ export const ComparePage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="text-xl font-bold text-slate-900">Multi-Paper Comparative Analysis</h2>
-        <p className="text-xs text-slate-500">
-          Cross-examine methodologies, empirical benchmarks, and architectural designs side-by-side
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">Multi-Paper Comparative Analysis</h2>
+          <p className="text-xs text-slate-500">
+            Cross-examine methodologies, empirical benchmarks, and architectural designs side-by-side
+          </p>
+        </div>
+
+        {comparison && (
+          <Button
+            variant="outline"
+            size="sm"
+            icon={Download}
+            onClick={handleExportComparison}
+          >
+            Export Matrix (.md)
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -103,12 +146,33 @@ export const ComparePage = () => {
       {/* Paper Selection Matrix */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-brand-600" />
-              <span>Select Papers To Compare ({selectedIds.length} Selected • Min: 2, Max: 5)</span>
-            </h4>
-            <p className="text-[11px] text-slate-500 mt-0.5">Choose papers to include in the side-by-side synthesis</p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <BookOpen className="w-3.5 h-3.5 text-brand-600" />
+                <span>Select Papers To Compare ({selectedIds.length} Selected • Min: 2, Max: 5)</span>
+              </h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">Choose papers to include in the side-by-side synthesis</p>
+            </div>
+            {documents.length > 0 && (
+              <div className="flex items-center gap-2 text-xs ml-2">
+                <button
+                  type="button"
+                  onClick={selectAll}
+                  className="text-brand-600 hover:text-brand-700 font-semibold"
+                >
+                  Select All
+                </button>
+                <span className="text-slate-300">•</span>
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="text-slate-500 hover:text-slate-700 font-semibold"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
           </div>
 
           <Button
