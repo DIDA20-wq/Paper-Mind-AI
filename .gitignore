@@ -1,0 +1,24 @@
+# Python & Virtualenv
+__pycache__/
+*.py[cod]
+*$py.class
+backend/venv/
+.pytest_cache/
+*.db
+*.sqlite3
+
+# Node & Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.DS_Store
+
+# Local secrets & data
+.env
+uploads/
+data/qdrant/
+*.log
+
+# IDE
+.idea/
+.vscode/
