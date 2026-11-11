@@ -44,11 +44,21 @@ def ask_question(
             ChatSession.id == req.session_id,
             ChatSession.user_id == current_user.id
         ).first()
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
 
     target_doc_id = req.document_id
     doc_ids = list(req.document_ids) if req.document_ids else []
     if target_doc_id and target_doc_id not in doc_ids:
         doc_ids.append(target_doc_id)
+
+    # Validate that all requested document IDs belong to the current user (defense in depth)
+    if doc_ids:
+        valid_docs = db.query(Document.id).filter(
+            Document.id.in_(doc_ids),
+            Document.user_id == current_user.id
+        ).all()
+        doc_ids = [vd[0] for vd in valid_docs]
 
     if not session:
         # Generate informative title from question
