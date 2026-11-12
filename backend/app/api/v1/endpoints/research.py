@@ -175,19 +175,6 @@ def export_paper_summary(
         "filename": f"PaperMind_Summary_{safe_title}.md",
         "markdown": full_markdown
     }
-    """Retrieve existing cached summary for a document."""
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.user_id == current_user.id
-    ).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-    
-    summary = db.query(Summary).filter(Summary.document_id == document_id).first()
-    if not summary:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Summary not yet generated for this document")
-    
-    return summary
 
 
 @router.post("/compare", response_model=ComparisonResponse)
@@ -316,14 +303,25 @@ def export_comparison_matrix(
 @router.post("/search", response_model=List[PassageResult])
 def semantic_search(
     req: SemanticSearchRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Direct semantic search across document chunks."""
+    doc_ids = None
+    if req.document_ids:
+        valid_docs = db.query(Document.id).filter(
+            Document.id.in_(req.document_ids),
+            Document.user_id == current_user.id
+        ).all()
+        doc_ids = [vd[0] for vd in valid_docs]
+        if not doc_ids:
+            return []
+
     query_vector = embedding_engine.embed_query(req.query)
     passages = qdrant_service.search(
         query_vector=query_vector,
         user_id=current_user.id,
-        document_ids=req.document_ids if req.document_ids else None,
+        document_ids=doc_ids,
         limit=req.limit,
         score_threshold=0.1
     )

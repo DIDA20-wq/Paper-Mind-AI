@@ -22,6 +22,15 @@ class PDFService:
         if not file_bytes.startswith(b"%PDF-"):
             return False, "Invalid file format. The file is not a valid PDF document."
         
+        try:
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            if len(doc) == 0:
+                doc.close()
+                return False, "The PDF file is empty or contains no pages."
+            doc.close()
+        except Exception:
+            return False, "The PDF file is corrupted and could not be parsed."
+        
         return True, ""
 
     @staticmethod

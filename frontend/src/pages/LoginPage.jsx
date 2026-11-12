@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import Button from '../components/common/Button';
 
 export const LoginPage = () => {
-  const { login, quickDemoLogin } = useAuth();
+  const { user, login, quickDemoLogin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -15,6 +15,19 @@ export const LoginPage = () => {
   const [loading, setLoading] = useState(false);
 
   const from = location.state?.from?.pathname || '/dashboard';
+
+  React.useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('expired') === 'true') {
+      setError('Your session has expired. Please sign in again.');
+    }
+  }, [location.search]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -52,6 +52,8 @@ def ask_question(
     if target_doc_id and target_doc_id not in doc_ids:
         doc_ids.append(target_doc_id)
 
+    had_doc_ids_requested = bool(doc_ids)
+
     # Validate that all requested document IDs belong to the current user (defense in depth)
     if doc_ids:
         valid_docs = db.query(Document.id).filter(
@@ -59,6 +61,10 @@ def ask_question(
             Document.user_id == current_user.id
         ).all()
         doc_ids = [vd[0] for vd in valid_docs]
+
+        # If user explicitly requested documents but NONE belong to them, ensure no fallback to all papers
+        if had_doc_ids_requested and not doc_ids:
+            doc_ids = ["00000000-0000-0000-0000-000000000000"]
 
     if not session:
         # Generate informative title from question
@@ -145,6 +151,12 @@ def list_chat_sessions(
     """Retrieve chat sessions for the current user."""
     query = db.query(ChatSession).filter(ChatSession.user_id == current_user.id)
     if document_id:
+        doc = db.query(Document.id).filter(
+            Document.id == document_id,
+            Document.user_id == current_user.id
+        ).first()
+        if not doc:
+            return []
         query = query.filter(ChatSession.document_id == document_id)
     
     return query.order_by(ChatSession.updated_at.desc()).all()
@@ -157,6 +169,14 @@ def create_chat_session(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new chat conversation session."""
+    if session_in.document_id:
+        doc = db.query(Document.id).filter(
+            Document.id == session_in.document_id,
+            Document.user_id == current_user.id
+        ).first()
+        if not doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Referenced document not found")
+
     session = ChatSession(
         user_id=current_user.id,
         title=session_in.title,

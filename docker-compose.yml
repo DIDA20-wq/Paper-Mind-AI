@@ -48,6 +48,13 @@ services:
       - QDRANT_PORT=6333
       - SECRET_KEY=papermind-super-secure-production-jwt-key
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - uploads_data:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,8 +70,10 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:
   qdrant_data:
+  uploads_data:

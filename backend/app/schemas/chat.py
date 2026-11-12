@@ -59,7 +59,7 @@ class AskQuestionRequest(BaseModel):
     session_id: Optional[str] = None
     document_id: Optional[str] = None
     document_ids: Optional[List[str]] = Field(default_factory=list)
-    question: str = Field(..., min_length=2)
+    question: str = Field(..., min_length=2, max_length=4000)
 
 
 class ChatResponse(BaseModel):

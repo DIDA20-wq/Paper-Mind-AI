@@ -236,3 +236,99 @@ def test_input_validation_and_malicious_uploads(client: TestClient):
     )
     assert short_q.status_code == 422
 
+    # 4. Corrupted PDF (has magic bytes %PDF- but invalid payload) -> 400
+    corrupt_bytes = b"%PDF-1.4\nCorrupted garbage binary stream \x00\x01\x02"
+    corrupt_upload = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("corrupt.pdf", corrupt_bytes, "application/pdf")},
+        headers=headers
+    )
+    assert corrupt_upload.status_code == 400
+    assert "corrupted" in corrupt_upload.json()["detail"].lower()
+
+
+def test_unauthenticated_endpoints_rejected(client: TestClient):
+    """
+    Ensure all sensitive endpoints enforce 401 Unauthorized
+    when unauthenticated requests are made.
+    """
+    assert client.get("/api/v1/auth/me").status_code == 401
+    assert client.get("/api/v1/documents").status_code == 401
+    assert client.get("/api/v1/documents/dummy-id").status_code == 401
+    assert client.delete("/api/v1/documents/dummy-id").status_code == 401
+    assert client.post("/api/v1/documents/upload").status_code == 401
+    assert client.get("/api/v1/chat/sessions").status_code == 401
+    assert client.post("/api/v1/chat/sessions", json={"title": "Test"}).status_code == 401
+    assert client.post("/api/v1/chat/ask", json={"question": "Test question"}).status_code == 401
+    assert client.post("/api/v1/research/summarize", json={"document_id": "dummy"}).status_code == 401
+    assert client.post("/api/v1/research/compare", json={"document_ids": ["d1", "d2"]}).status_code == 401
+    assert client.post("/api/v1/research/search", json={"query": "test query"}).status_code == 401
+
+
+def test_cors_preflight_and_headers(client: TestClient):
+    """
+    Verify CORS configuration permits frontend origin
+    and handles OPTIONS preflight appropriately.
+    """
+    response = client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        }
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    assert "GET" in response.headers.get("access-control-allow-methods", "")
+
+
+def test_chat_session_foreign_document_validation(client: TestClient):
+    """
+    Verify that creating a chat session referencing another user's document
+    is rejected with 404 Not Found.
+    """
+    # User 1
+    u1_email = f"u1_{uuid.uuid4().hex[:6]}@univ.edu"
+    client.post("/api/v1/auth/register", json={"email": u1_email, "password": "Password123!", "full_name": "U1"})
+    t1 = client.post("/api/v1/auth/login/json", json={"email": u1_email, "password": "Password123!"}).json()["access_token"]
+    h1 = {"Authorization": f"Bearer {t1}"}
+
+    # User 2
+    u2_email = f"u2_{uuid.uuid4().hex[:6]}@univ.edu"
+    client.post("/api/v1/auth/register", json={"email": u2_email, "password": "Password123!", "full_name": "U2"})
+    t2 = client.post("/api/v1/auth/login/json", json={"email": u2_email, "password": "Password123!"}).json()["access_token"]
+    h2 = {"Authorization": f"Bearer {t2}"}
+
+    # U1 uploads a doc
+    doc = fitz.open()
+    p = doc.new_page()
+    p.insert_text((50, 72), "User 1 Private Paper\n\nContent here.")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    up = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("u1_paper.pdf", pdf_bytes, "application/pdf")},
+        headers=h1
+    )
+    assert up.status_code == 201
+    u1_doc_id = up.json()["document"]["id"]
+
+    try:
+        # U2 attempts to create a session referencing U1's doc -> 404
+        bad_sess = client.post(
+            "/api/v1/chat/sessions",
+            json={"title": "Session on U1 Doc", "document_id": u1_doc_id},
+            headers=h2
+        )
+        assert bad_sess.status_code == 404
+
+        # U2 listing sessions filtered by U1's doc_id returns empty list
+        filter_sess = client.get(f"/api/v1/chat/sessions?document_id={u1_doc_id}", headers=h2)
+        assert filter_sess.status_code == 200
+        assert len(filter_sess.json()) == 0
+    finally:
+        client.delete(f"/api/v1/documents/{u1_doc_id}", headers=h1)
+
+

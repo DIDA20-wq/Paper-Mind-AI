@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import Button from '../components/common/Button';
 
 export const RegisterPage = () => {
-  const { register, login } = useAuth();
+  const { user, register, login } = useAuth();
   const navigate = useNavigate();
 
   const [fullName, setFullName] = useState('');
@@ -13,6 +13,12 @@ export const RegisterPage = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -197,29 +197,55 @@ Once the backend is running, interactive Swagger API documentation is available 
 
 ## 9. Automated Testing Suite
 
-Execute the comprehensive Pytest test suite covering authentication, extraction, chunking, embeddings, vector search, RAG grounding, summarization, and security isolation:
+Execute the comprehensive test suites covering authentication, extraction, chunking, embeddings, vector search, RAG grounding, summarization, and security isolation:
 
+### A. Backend Pytest Suite (17 Tests)
 ```powershell
-$env:PYTHONPATH="backend"
-backend\venv\Scripts\python.exe -m pytest backend/tests/ -v -o pythonpath=backend
+backend\venv\Scripts\python.exe -m pytest -v
 ```
 
 **Results:**
 ```text
-backend/tests/test_phase1.py::test_health_check PASSED                   [  8%]
-backend/tests/test_phase1.py::test_user_registration_and_login PASSED    [ 16%]
-backend/tests/test_phase1.py::test_demo_user_login PASSED                [ 25%]
-backend/tests/test_phase2_ingestion.py::test_pdf_validation PASSED       [ 33%]
-backend/tests/test_phase2_ingestion.py::test_page_accurate_extraction PASSED [ 41%]
-backend/tests/test_phase2_ingestion.py::test_page_preserving_chunking PASSED [ 50%]
-backend/tests/test_phase2_ingestion.py::test_embedding_generation PASSED [ 58%]
-backend/tests/test_phase2_ingestion.py::test_qdrant_vector_upsert_and_search PASSED [ 66%]
-backend/tests/test_phase3_rag.py::test_rag_zero_hallucination_insufficient_context PASSED [ 75%]
-backend/tests/test_phase3_rag.py::test_rag_grounded_answer_with_citations PASSED [ 83%]
-backend/tests/test_phase4_research.py::test_research_summarize_and_compare PASSED [ 91%]
-backend/tests/test_phase5_security.py::test_cross_user_isolation PASSED  [100%]
+backend/tests/test_phase1.py::test_health_check PASSED                                      [  5%]
+backend/tests/test_phase1.py::test_user_registration_and_login PASSED                       [ 11%]
+backend/tests/test_phase1.py::test_demo_user_login PASSED                                   [ 17%]
+backend/tests/test_phase2_ingestion.py::test_pdf_validation PASSED                          [ 23%]
+backend/tests/test_phase2_ingestion.py::test_page_accurate_extraction PASSED                [ 29%]
+backend/tests/test_phase2_ingestion.py::test_page_preserving_chunking PASSED                [ 35%]
+backend/tests/test_phase2_ingestion.py::test_embedding_generation PASSED                    [ 41%]
+backend/tests/test_phase2_ingestion.py::test_qdrant_vector_upsert_and_search PASSED         [ 47%]
+backend/tests/test_phase3_rag.py::test_rag_zero_hallucination_insufficient_context PASSED   [ 52%]
+backend/tests/test_phase3_rag.py::test_rag_grounded_answer_with_citations PASSED            [ 58%]
+backend/tests/test_phase4_research.py::test_research_summarize_and_compare PASSED            [ 64%]
+backend/tests/test_phase5_security.py::test_cross_user_isolation PASSED                     [ 70%]
+backend/tests/test_phase5_security.py::test_jwt_and_authentication_security PASSED           [ 76%]
+backend/tests/test_phase5_security.py::test_input_validation_and_malicious_uploads PASSED    [ 82%]
+backend/tests/test_phase5_security.py::test_unauthenticated_endpoints_rejected PASSED        [ 88%]
+backend/tests/test_phase5_security.py::test_cors_preflight_and_headers PASSED                [ 94%]
+backend/tests/test_phase5_security.py::test_chat_session_foreign_document_validation PASSED  [100%]
 
-======================= 12 passed in 24.89s =======================
+======================= 17 passed in 28.95s =======================
+```
+
+### B. Frontend Vitest Suite (7 Tests)
+```powershell
+cd frontend
+npm test
+```
+
+**Results:**
+```text
+ ✓ src/__tests__/auth_and_routes.test.jsx (7 tests)
+   - authService Local Storage & Token Management: returns false when no token present
+   - authService Local Storage & Token Management: returns true & user when token exists
+   - authService Local Storage & Token Management: logout() safely purges all credentials
+   - authService Local Storage & Token Management: gracefully handles corrupted JSON
+   - Axios Security Interceptors: automatically attaches Authorization Bearer header
+   - Axios Security Interceptors: does not attach header when unauthenticated
+   - Axios Security Interceptors: clears credentials upon 401 Unauthorized responses
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
 ```
 
 ---
@@ -231,10 +257,12 @@ Deploy the entire stack with a single command:
 docker-compose up --build
 ```
 This provisions:
-- PostgreSQL 16 on port `5432`
-- Qdrant Vector Database on port `6333`
-- FastAPI Application on port `8000`
-- Nginx + React Frontend on port `80`
+- **PostgreSQL 16** on port `5432` with volume persistence
+- **Qdrant Vector Database** on port `6333` with payload indexing
+- **FastAPI Application** on port `8000` with automated migrations and seeding
+- **Nginx + React SPA** on port `80` with SPA routing and reverse-proxy `/api/`
+
+See [docs/deployment.md](docs/deployment.md) for full bare-metal, VPS, systemd, and Let's Encrypt SSL instructions.
 
 ---
 

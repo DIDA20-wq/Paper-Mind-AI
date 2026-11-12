@@ -50,9 +50,9 @@ class ComparisonResponse(BaseModel):
 
 
 class SemanticSearchRequest(BaseModel):
-    query: str
+    query: str = Field(..., min_length=2, max_length=2000)
     document_ids: Optional[List[str]] = Field(default_factory=list)
-    limit: int = 5
+    limit: int = Field(default=5, ge=1, le=50)
 
 
 class PassageResult(BaseModel):

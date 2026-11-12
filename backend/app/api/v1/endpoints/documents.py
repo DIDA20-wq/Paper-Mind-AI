@@ -49,9 +49,12 @@ async def upload_document(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
 
     # 3. Compute hash and generate file path
+    import re
     file_hash = pdf_service.compute_sha256(contents)
     doc_id = str(uuid.uuid4())
-    safe_filename = f"{doc_id}_{os.path.basename(file.filename)}"
+    raw_filename = os.path.basename(file.filename or "paper.pdf")
+    sanitized_filename = re.sub(r'[^a-zA-Z0-9_.-]', '_', raw_filename)
+    safe_filename = f"{doc_id}_{sanitized_filename}"
     stored_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
 
     with open(stored_path, "wb") as f:
